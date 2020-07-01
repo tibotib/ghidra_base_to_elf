@@ -15,10 +15,10 @@ def get_phdr_byte_32()->list :
     0x06, 0x00, 0x00, 0x00,#p_type
     0x34, 0x00, 0x00, 0x00,#p_offset
     0x34, 0x00, 0x00, 0x00,#p_vaddr
-    0x00, 0x00, 0x00, 0x00,#p_filesez
-    0x00, 0x00, 0x00, 0x00,
+    0x34, 0x00, 0x00, 0x00,#p_filesez
+    0x50, 0x00, 0x00, 0x00,
     0x04, 0x00, 0x00, 0x00,#p_flag
-    0x00, 0x00, 0x00, 0x00]
+    0x50, 0x00, 0x00, 0x00]
 
 def gen_loader_phdr(elf_exe: lief.ELF.Binary, phdr: lief.ELF.Segment, is_64: bool) :
     load_phdr             = lief.ELF.Segment()
@@ -41,7 +41,7 @@ def gen_phdr(elf_exe: lief.ELF.Binary, is_64: bool) :
         print("32 bits phdr")
 
     phdr = elf_exe.add(phdr)
-    #load_phdr(elf_exe, phdr)
+#    load_phdr(elf_exe, phdr)
 
 
 def load_content(phdr: lief.ELF.Segment, is_64: bool)->list :
@@ -55,10 +55,15 @@ def load_content(phdr: lief.ELF.Segment, is_64: bool)->list :
     0x00, 0x00, 0x00, 0x00
     ]
 
-def load_phdr(elf_exe: lief.ELF.Binary, phdr: lief.ELF.Segment) :
+def load_phdr(elf_exe: lief.ELF.Binary) :
     loader = lief.ELF.Segment()
     loader.type = lief.ELF.SEGMENT_TYPES.LOAD
-    loader.content = load_content(elf_exe, True)
-    loader.alignement = 0x8
+    loader.add(lief.ELF.SEGMENT_FLAGS.R)
+    loader.file_offset = 0x50
+    loader.physical_address = 0x34
+    loader.physical_size = 0x18
+    loader.virtual_address = 0x50
+    loader.virtual_size = 0x18
+    loader.alignment = 0x8
 
     elf_exe.add(loader)

@@ -4,7 +4,7 @@ import os
 from os.path import join, getsize
 
 from header import gen_header_elf, address
-from phdr import gen_phdr
+from phdr import gen_phdr, load_phdr
 from parseXML import parseXML, get_functions, get_sections_content, set_xmldoc, is_64, is_elf, get_executable_path
 
 
@@ -82,23 +82,33 @@ def gen_shstrtab(elf_exe: lief.ELF.Binary, sh_content: list, sections_infos: tup
 
 #ici on peut reparcourir les sections avec leur segment associe (si il y en a qu'un par section)
 
-#    for i in range(0, len(elf_exe.sections)) :
+    for i in range(0, len(elf_exe.sections)) :
 
-#        seg = elf_exe.segments[i + 1]#pcq il y a le phdr au tout debut
-#        sec = elf_exe.sections[i]
+        seg = elf_exe.segments[i]#faire gaffe a l'indice a savoir qu'il y a le segment phdr au debut dc des fois on doit faire i + 1
+        sec = elf_exe.sections[i]
 
-#        virtSize_virtAddr: tuple = find_start(sec.name, sections_infos)
-#        if virtSize_virtAddr != -1 :
-#            print("name section = ", sec.name)
-#            print("addr = ",  hex(virtSize_virtAddr[1]))
-#            seg.virtual_address = virtSize_virtAddr[1]
-#            seg.virtual_size = virtSize_virtAddr[0]
-#            seg.physical_size = virtSize_virtAddr[0]
+        gen_permissions(sec.name, sections_infos, seg)
 
-#        gen_permissions(sec.name, sections_infos, seg)
+        virtSize_virtAddr: tuple = find_start(sec.name, sections_infos)
+        if virtSize_virtAddr != -1 :
+            print("name section = ", sec.name)
+            print("addr = ",  hex(sec.offset))
+            seg.file_offset = sec.file_offset
 
+            sec.virtual_address = virtSize_virtAddr[1]
+            seg.virtual_address = virtSize_virtAddr[1]
+            seg.physical_address = virtSize_virtAddr[1]
+
+            sec.size = virtSize_virtAddr[0]
+            seg.virtual_size = virtSize_virtAddr[0]
+            seg.physical_size = virtSize_virtAddr[0]
+
+            sec.alignment = 8
+            seg.alignment = 8
+
+#    load_phdr(elf_exe)
     shstrtab_section.entry_size = elf_exe.header.numberof_sections + 1
-    shstrtab_section = elf_exe.add(shstrtab_section)
+    shstrtab_section = elf_exe.add(shstrtab_section, False)
     elf_exe.header.section_name_table_idx = elf_exe.header.numberof_sections - 2
     elf_exe.header.section_header_offset = shstrtab_section.offset + shstrtab_section.original_size
     elf_exe.header.entrypoint = 0x4012a0#faut trouver le point d'entre ds le xml
@@ -111,16 +121,27 @@ def find_start(name_section: str, sections_infos)->list :
     all_infos = sections_infos[1]
     for infos_sec in all_infos :
         if infos_sec.attributes['NAME'].value == name_section :
-            return [int(infos_sec.attributes['LENGTH'].value, 16), int(infos_sec.attributes['START_ADDR'].value, 16) - 0x3000]
+            return [int(infos_sec.attributes['LENGTH'].value, 16), int(infos_sec.attributes['START_ADDR'].value, 16)]
     return -1
 
 
-def gen_sections(section_infos: tuple, elf_exe: lief.ELF.Binary)->list :
+def add_null_section(elf_exe: lief.ELF.Binary) :
+    """
+    on ajoute une section NULL au debut
+    """
+    new_section = lief.ELF.Section()
+    new_section.type = lief.ELF.SECTION_TYPES.NULL
+    new_section.content = [0]
+    new_section = elf_exe.add(new_section)
+
+
+def gen_sections(sections_infos: tuple, elf_exe: lief.ELF.Binary)->list :
     """
     genere les sections et les segments par la meme occasion
     Retourne la list de tous les noms de sections
     """
-    content_sections: dict = section_infos[0]
+    add_null_section(elf_exe)
+    content_sections: dict = sections_infos[0]
 
     name_section_shstrtab: list = []
     for name_section in content_sections :
@@ -132,12 +153,15 @@ def gen_sections(section_infos: tuple, elf_exe: lief.ELF.Binary)->list :
         newSec              = lief.ELF.Section(name_section)
         newSec.type         = lief.ELF.SECTION_TYPES.PROGBITS
         newSec.content      = list(content_sections[name_section])
-        #if newSec.name == ".text" :
+
         newSec.add(lief.ELF.SECTION_FLAGS.ALLOC)
-        newSec.add(lief.ELF.SECTION_FLAGS.WRITE)
+        if newSec.name == ".text" :
+            newSec.add(lief.ELF.SECTION_FLAGS.EXECINSTR)
+        else :
+            newSec.add(lief.ELF.SECTION_FLAGS.WRITE)
 #        newSec.
 
-        of: tuple =  find_start(newSec.name, section_infos)
+        of: tuple =  find_start(newSec.name, sections_infos)
         if of != -1 :
             print("of0 = ", of[0])
             print("sz = ", newSec.size)
@@ -146,14 +170,15 @@ def gen_sections(section_infos: tuple, elf_exe: lief.ELF.Binary)->list :
             newSec.offset = of[1]
             newSec.virtual_address = of[1]
 
-        newSec = elf_exe.add(newSec, loaded = False)#en mettant loaded a False on ne creer pas de segment
 
-    #gen_segments(elf_exe)
+        newSec = elf_exe.add(newSec, loaded = True)#en mettant loaded a False on ne creer pas de segment
+
+    #gen_segments(elf_exe, sections_infos)
     name_section_shstrtab.append(".symtab")
     name_section_shstrtab.append(".symstr")
     return name_section_shstrtab
 
-def gen_segments(elf_exe: lief.ELF.Binary) :
+def gen_segments(elf_exe: lief.ELF.Binary, sections_infos: tuple) :
     #pour l'instant j'ai essayer de creer un segment par section pour apres ameliorer
     for section in  elf_exe.sections :
         seg = lief.ELF.Segment()
@@ -166,6 +191,8 @@ def gen_segments(elf_exe: lief.ELF.Binary) :
         seg.virtual_size = section.size
         seg.physical_size = section.size
         seg.alignment = section.size
+
+        gen_permissions(section.name, sections_infos, seg)
         elf_exe.add(seg, section.size)
 
 def gen_symtab(elf_exe: lief.ELF.Binary, path_xml: str) :
