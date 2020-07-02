@@ -46,6 +46,10 @@ def get_directory_path(path_xml: str)->str :
 
     return ''.join(path_copy)
 
+def entry_point(elf_exe)->int :
+    entry_point = parseXML('PROGRAM_ENTRY_POINT')
+    return int(entry_point[0].attributes['ADDRESS'].value, 16)
+
 
 def get_executable_path(path_xml)->str :
     infos_content = parseXML('MEMORY_CONTENTS')

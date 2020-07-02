@@ -5,7 +5,7 @@ from os.path import join, getsize
 
 from header import gen_header_elf, address
 from phdr import gen_phdr, load_phdr
-from parseXML import parseXML, get_functions, get_sections_content, set_xmldoc, is_64, is_elf, get_executable_path
+from parseXML import parseXML, get_functions, get_sections_content, set_xmldoc, is_64, is_elf, get_executable_path, entry_point
 
 
 def string_to_list(string: str)->list :
@@ -33,47 +33,70 @@ def get_abstract_binary(binary: lief.ELF.Binary):
     """
     return super(binary.__class__, binary)
 
-def remove_all_flags(seg: lief.ELF.Segment) :
-    for fl in [lief.ELF.SEGMENT_FLAGS.R, lief.ELF.SEGMENT_FLAGS.W, lief.ELF.SEGMENT_FLAGS.X] :
-        if seg.has(fl) :
-            seg.remove(fl)
-
-def transfo_perm(permission: str, seg: lief.ELF.Segment) :
+def transfo_perm(permission: str, seg: lief.ELF.Segment, section: lief.ELF.Section) :
     """
     on transforme les permissions du fichier xml pour les mettre assigner au segment
     """
-    remove_all_flags(seg)
-    if permission == "r" :
-        seg.add(lief.ELF.SEGMENT_FLAGS.R)
-    elif permission == "w" :
+    #on a pas besoin de mattre de flag ALLOC pour les sections ni R pour les segments (ils sont mis par defaut)
+    if permission == "w" :
         seg.add(lief.ELF.SEGMENT_FLAGS.W)
+        section.add(lief.ELF.SECTION_FLAGS.WRITE)
+
     elif permission == "x" :
         seg.add(lief.ELF.SEGMENT_FLAGS.X)
+        section.add(lief.ELF.SECTION_FLAGS.EXECINSTR)
+
     elif permission == "rw" :
-        seg.add(lief.ELF.SEGMENT_FLAGS.R)
         seg.add(lief.ELF.SEGMENT_FLAGS.W)
+        section.add(lief.ELF.SECTION_FLAGS.WRITE)
+
     elif permission == "rx" :
-        seg.add(lief.ELF.SEGMENT_FLAGS.R)
         seg.add(lief.ELF.SEGMENT_FLAGS.X)
+        section.add(lief.ELF.SECTION_FLAGS.EXECINSTR)
+
     elif permission == "wx" :
         seg.add(lief.ELF.SEGMENT_FLAGS.W)
+        section.add(lief.ELF.SECTION_FLAGS.WRITE)
         seg.add(lief.ELF.SEGMENT_FLAGS.X)
-    elif permission == "rwx" :
-        seg.add(lief.ELF.SEGMENT_FLAGS.R)
-        seg.add(lief.ELF.SEGMENT_FLAGS.W)
-        seg.add(lief.ELF.SEGMENT_FLAGS.X)
+        section.add(lief.ELF.SECTION_FLAGS.EXECINSTR)
 
-def gen_permissions(section_name: str, sections_infos: tuple, seg: lief.ELF.Segment) :
+    elif permission == "rwx" :
+        seg.add(lief.ELF.SEGMENT_FLAGS.W)
+        section.add(lief.ELF.SECTION_FLAGS.WRITE)
+        seg.add(lief.ELF.SEGMENT_FLAGS.X)
+        section.add(lief.ELF.SECTION_FLAGS.EXECINSTR)
+
+def gen_permissions(section: lief.ELF.Section, sections_infos: tuple, seg: lief.ELF.Segment) :
+    """
+    on genere les permissions pour le segment zet la section
+    """
+    section_name: str = section.name
     info_sec = sections_infos[1]
     for info in info_sec :
         if info.attributes['NAME'].value == section_name :
             perm: str = info.attributes['PERMISSIONS'].value
             print("perm = ", perm)
-            transfo_perm(perm, seg)
+            transfo_perm(perm, seg, section)
+
+def split_segments(elf_exe: lief.ELF.Binary) :
+    for i in range(0, len(elf_exe.segments)) :
+        segment = elf_exe.segments[i]
+        if segment.type != lief.ELF.SEGMENT_TYPES.LOAD :
+            continue
+        tmp = i
+        perm_seg: list = segment.flags
+        if tmp + 1 != len(elf_exe.segments) :#si on est pas a la fin
+            tmp += 1
+            if elf_exe.segments[tmp].flags == perm_seg :
+                if (elf_exe.segments[i].virtual_address + elf_exe.segments[tmp].virtual_size) == elf_exe.segments[tmp].virtual_address :
+                    segment.virtual_size += elf_exe.segments[tmp].virtual_size
+                    elf_exe.segments[tmp].type = lief.ELF.SEGMENT_TYPES.NULL
+                    elf_exe.segments[tmp].virtual_address = 0x0
+                    elf_exe.segments[tmp].virtual_size = 0x0
 
 def gen_shstrtab(elf_exe: lief.ELF.Binary, sh_content: list, sections_infos: tuple) :
     """
-    on genre shstrstab et on finalise le header + on rearrange a les segments
+    on genere shstrstab et on finalise le header + on rearrange a les segments
     """
     shstrtab_section = lief.ELF.Section(".shstrtab")
     shstrtab_section.clear()
@@ -82,12 +105,12 @@ def gen_shstrtab(elf_exe: lief.ELF.Binary, sh_content: list, sections_infos: tup
 
 #ici on peut reparcourir les sections avec leur segment associe (si il y en a qu'un par section)
 
-    for i in range(0, len(elf_exe.sections)) :
+    for i in range(0, len(elf_exe.sections) - 2) :
 
         seg = elf_exe.segments[i]#faire gaffe a l'indice a savoir qu'il y a le segment phdr au debut dc des fois on doit faire i + 1
         sec = elf_exe.sections[i]
 
-        gen_permissions(sec.name, sections_infos, seg)
+        gen_permissions(sec, sections_infos, seg)
 
         virtSize_virtAddr: tuple = find_start(sec.name, sections_infos)
         if virtSize_virtAddr != -1 :
@@ -106,12 +129,13 @@ def gen_shstrtab(elf_exe: lief.ELF.Binary, sh_content: list, sections_infos: tup
             sec.alignment = 8
             seg.alignment = 8
 
+    #split_segments(elf_exe)
 #    load_phdr(elf_exe)
     shstrtab_section.entry_size = elf_exe.header.numberof_sections + 1
     shstrtab_section = elf_exe.add(shstrtab_section, False)
     elf_exe.header.section_name_table_idx = elf_exe.header.numberof_sections - 2
     elf_exe.header.section_header_offset = shstrtab_section.offset + shstrtab_section.original_size
-    elf_exe.header.entrypoint = 0x4012a0#faut trouver le point d'entre ds le xml
+    elf_exe.header.entrypoint = entry_point(elf_exe)#faut trouver le point d'entre ds le xml
 
 
 def find_start(name_section: str, sections_infos)->list :
@@ -155,11 +179,6 @@ def gen_sections(sections_infos: tuple, elf_exe: lief.ELF.Binary)->list :
         newSec.content      = list(content_sections[name_section])
 
         newSec.add(lief.ELF.SECTION_FLAGS.ALLOC)
-        if newSec.name == ".text" :
-            newSec.add(lief.ELF.SECTION_FLAGS.EXECINSTR)
-        else :
-            newSec.add(lief.ELF.SECTION_FLAGS.WRITE)
-#        newSec.
 
         of: tuple =  find_start(newSec.name, sections_infos)
         if of != -1 :
@@ -228,7 +247,7 @@ def gen_symtab(elf_exe: lief.ELF.Binary, path_xml: str) :
 #la faut s'addapter et pas tt le temps mettre la meme chose
         sym_lief.type = lief.ELF.SYMBOL_TYPES.FUNC
         sym_lief.binding = lief.ELF.SYMBOL_BINDINGS.GLOBAL
-        sym_lief.value = all_func[0][sym_ghidra] - 0x3000
+        sym_lief.value = all_func[0][sym_ghidra]
         sym_lief.size = 0
     #    if sym_ghidra.isDynamic() :
     #        sym_lief = elf_exe.add_dynamic_symbol(sym_lief)
@@ -247,7 +266,7 @@ def gen_symtab(elf_exe: lief.ELF.Binary, path_xml: str) :
 #la faut s'addapter et pas tt le temps mettre la meme chose
         sym_lief.type = lief.ELF.SYMBOL_TYPES.FUNC
         sym_lief.binding = lief.ELF.SYMBOL_BINDINGS.GLOBAL
-        sym_lief.value = all_func[1][sym_ghidra] - 0x3000
+        sym_lief.value = all_func[1][sym_ghidra]
     #    if sym_ghidra.isDynamic() :
     #        sym_lief = elf_exe.add_dynamic_symbol(sym_lief)
     #    else :
@@ -264,7 +283,7 @@ def gen_symtab(elf_exe: lief.ELF.Binary, path_xml: str) :
 #la faut s'addapter et pas tt le temps mettre la meme chose
         sym_lief.type = lief.ELF.SYMBOL_TYPES.OBJECT
         sym_lief.binding = lief.ELF.SYMBOL_BINDINGS.GLOBAL
-        sym_lief.value = all_func[2][sym_ghidra] - 0x3000
+        sym_lief.value = all_func[2][sym_ghidra]
 #        sym_lief.imported = True
 #        sym_lief.size = 0
     #    if sym_ghidra.isDynamic() :
@@ -274,8 +293,8 @@ def gen_symtab(elf_exe: lief.ELF.Binary, path_xml: str) :
         #print(sym_lief)
 
     symstr_section.content = string_list_to_byte(strtab_list)
-    symtab_section = elf_exe.add(symtab_section)
-    symstr_section = elf_exe.add(symstr_section)
+    symtab_section = elf_exe.add(symtab_section, False)
+    symstr_section = elf_exe.add(symstr_section, False)
 
 
 
@@ -318,8 +337,8 @@ def gen_elf_file(elf_exe: lief.ELF.Binary, path_xml: str, path_elf: str, is_64: 
     write_in_file(elf_exe, path_elf)
 
 def main() :
-    path_elf: str                 = "/home/fouque/idaExample.elf"
-    path_xml: str                 = "/home/fouque/exportGhidra/idafree70_windows.xml"
+    path_elf: str                 = "/home/fouque/hello.elf"
+    path_xml: str                 = "/home/fouque/exportGhidra/helloworld.xml"
     set_xmldoc(path_xml)
     proc_info = parseXML('PROCESSOR')[0]
 
