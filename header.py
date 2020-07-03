@@ -1,79 +1,6 @@
 #les fonctions utiles pour geerer l'en-tete
 import lief
 
-def get_ei_class(size)->str :
-    if size == 64 :
-        return '\x02'
-    elif size == 32 :
-        return '\x01'
-    return '\x00'
-
-
-def remove_beg(st:str)->list :
-    """
-    enleve les caracteres
-    """
-    ls:list = list(st)
-    len_str:int = len(st)
-    if len(ls) % 2 != 0 :
-        ls.remove(ls[1])
-    else:
-        ls.remove(ls[0])
-        ls.remove(ls[0])
-    return ls
-
-
-def rev(st:list)->list :
-    """
-    retourne une list de caractere en hexa passee en argument
-    """
-    ret:list = st.copy()
-    for i in range(0, len(st), 2) :
-        ret[i] = st[len(st) - i - 2]
-        ret[i + 1] = st[len(st) - i - 1]
-    return ret
-
-
-def get_int_list(st:list)->list :
-    """
-    pour obtenir une list de caractere hexa genre 5f en sa valeur int et ca sur tte la list
-    """
-    ret:list = []
-    for i in range(0, len(st), 2) :
-        tmp:int = int(st[i], base = 16)  * 16 + int(st[i + 1], base = 16)
-        ret.append(tmp)
-    return ret
-
-
-def address(entry:int)->list :#retourne le int en hex
-    entry_str:str = hex(entry)
-    new_str:list = remove_beg(entry_str)#nouveau str sans le 0x
-
-#    ret:list = ['4', '5', '3', '0', '1', '0']
-    ls_rev:list = rev(new_str)#on le retourne
-    addr:list = get_int_list(ls_rev)
-    return addr
-
-def complete(st:str, ln:int = 8):
-    """
-    complete st avec des 0 pour qu'il arrive a une len de ln en byte
-    """
-    ret:str = st
-    for i in range(0, ln - len(st)):
-        ret += '\x00'
-    return ret
-
-def ei_entrypoint(entrypoint:int, nbe_byt:int)->str :
-
-    ls:list = address(entrypoint)
-    ret:str = ""
-    i:int = 0
-    for i in range(0, len(ls)) :
-        ret += chr(ls[i])
-
-    ret = complete(ret, nbe_byt)
-    return ret
-
 def ei_ident(info_proc, is_64b)->bytearray :
     """
     retourne e_ident du header(16 premiers bytes)
@@ -98,15 +25,45 @@ def ei_machine(info_proc)->bytes :
     proc: str = info_proc.attributes['NAME'].value
     if proc == "x86" :
         return b"\x3e\0"
-    elif proc == "68000" :
+
+    elif proc == "68000" or proc == "MC68020" or proc == "MC68030":
         return b"\x04\0"
-#    elif proc == "6805" :
-#        return
+
+    elif proc == "Coldfire" :
+        return b"\x34\0"
+
+    elif proc == "8051" or proc == "mx51" :
+        return b"\x5a\0"
+
+    elif proc == "AARCH64" :
+        return b"\xb7\0"
+
+    elif proc == "ARM" or proc == "Cortex" :
+        return b"\x28\0"
+
+    elif proc == "DATA" :
+        return b"\xa0\0"
+
+    elif proc == "HC05" or proc == "M68HC05TB" :
+        return b"\x48\0"
+
+    elif proc == "HC08" or proc == "M68HC908QY4" :
+        return b"\x9f\0"
+
+    elif proc == "MIPS" or proc == "R6" :
+        return b"\x08\0"
+
+    elif proc == "64-32addr" or proc == "64-32addr-R6" :
+        return "\x33\0"
+
+    #elif
+
     elif proc == "Z80" or proc == "Z8401x" or proc == "Z180" or proc == "Z182":
         return b"\xdc\0"
+
     elif proc == "tricore" :
         return b"\x44\0"
-#        elif proc == ""
+
     return b"\x3e\0"#on met cette valeur pour ce pc
 
 def ei_machine_and_entrypoint_64(info_proc)->bytearray :
@@ -122,15 +79,15 @@ def ei_machine_and_entrypoint_64(info_proc)->bytearray :
     return ret
 
 def third_line_64()->bytearray :
-    e_phoff:bytes      = "\x40\0\0\0\0\0\0\0"#le section table header offset
-    e_shoff: bytes     = "\x78\0\0\0\0\0\0\0"#on sait pas pour l'instant mais on met qd meme a 0
-    e_flag: bytes      = "\0\0\0\0"
-    e_phsize: bytes    = "\x40\0"
-    e_phentsize: bytes = "\x38\0"#ca depend si on est en 32 ou 64 bits mais a voir
-    e_phenum: bytes    = "\0\0"#on met a zero on vera apres
-    e_shentsize: bytes = "\x40\0"
-    e_shnum: bytes     = "\0\0"#nio met a 0 aussi on vera apres
-    e_shstrndx: bytes  = "\0\0"
+    e_phoff:bytes      = b"\x40\0\0\0\0\0\0\0"#le section table header offset
+    e_shoff: bytes     = b"\x78\0\0\0\0\0\0\0"#on sait pas pour l'instant mais on met qd meme a 0
+    e_flag: bytes      = b"\0\0\0\0"
+    e_phsize: bytes    = b"\x40\0"
+    e_phentsize: bytes = b"\x38\0"#ca depend si on est en 32 ou 64 bits mais a voir
+    e_phenum: bytes    = b"\0\0"#on met a zero on vera apres
+    e_shentsize: bytes = b"\x40\0"
+    e_shnum: bytes     = b"\0\0"#nio met a 0 aussi on vera apres
+    e_shstrndx: bytes  = b"\0\0"
     return bytearray(e_phoff + e_shoff + e_flag + e_ehsize + e_phentsize + e_phenum + e_shentsize + e_shnum + e_shstrndx)
 
 def ei_machine_and_entrypoint_32(info_proc)->str :
