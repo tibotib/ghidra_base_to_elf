@@ -101,7 +101,7 @@ def set_segments(elf_exe: lief.ELF.Binary, sections_infos: tuple) :
 
     for i in range(1, len(elf_exe.sections) - 2) :
 
-        seg = elf_exe.segments[i]#faire gaffe a l'indice a savoir qu'il y a le segment phdr au debut dc des fois on doit faire i + 1
+        seg = elf_exe.segments[i - 1]#faire gaffe a l'indice a savoir qu'il y a le segment phdr au debut dc des fois on doit faire i + 1
         sec = elf_exe.sections[i]
 
         gen_permissions(sec, sections_infos, seg)
@@ -127,25 +127,26 @@ def gen_shstrtab(elf_exe: lief.ELF.Binary, sh_content: list, sections_infos: tup
     """
     on genere shstrstab et on finalise le header + on rearrange a les segments
     """
+    sh_content.append(".shstrtab")
     shstrtab_section = lief.ELF.Section(".shstrtab")
-    shstrtab_section.clear()
     shstrtab_section.content = string_list_to_byte(sh_content)
     shstrtab_section.type = lief.ELF.SECTION_TYPES.STRTAB
 
     set_segments(elf_exe, sections_infos)
 
+    #split_segments(elf_exe)
+    shstrtab_section.entry_size = elf_exe.header.numberof_sections + 1
+    shstrtab_section.alignment  = 0x8
+    shstrtab_section            = elf_exe.add(shstrtab_section, False)
+
+
+    elf_exe.header.section_name_table_idx = elf_exe.header.numberof_sections - 2
+#    elf_exe.header.section_header_offset  = shstrtab_section.offset + shstrtab_section.original_size
+    elf_exe.header.entrypoint             = entry_point(elf_exe)
+
     for section in elf_exe.sections :
         print(section)
 
-    #split_segments(elf_exe)
-    shstrtab_section.entry_size = elf_exe.header.numberof_sections + 1
-    shstrtab_section = elf_exe.add(shstrtab_section, False)
-    shstrtab_section.alignment = 0x8
-    elf_exe.header.section_name_table_idx = elf_exe.header.numberof_sections - 2
-    elf_exe.header.section_header_offset = shstrtab_section.offset + shstrtab_section.original_size
-    elf_exe.header.entrypoint = entry_point(elf_exe)#faut trouver le point d'entre ds le xml
-    for section in elf_exe.sections :
-        print(section)
 
 def find_start(name_section: str, sections_infos)->list :
     """
@@ -158,14 +159,17 @@ def find_start(name_section: str, sections_infos)->list :
     return -1
 
 
-def add_null_section(elf_exe: lief.ELF.Binary) :
+def add_null_section(elf_exe: lief.ELF.Binary, name_section_shstrtab: list) :
     """
     on ajoute une section NULL au debut
     """
     new_section = lief.ELF.Section()
+    new_section.name = '\0'
+    name_section_shstrtab.append('\0')
     new_section.type = lief.ELF.SECTION_TYPES.NULL
     new_section.content = [0]
-    new_section = elf_exe.add(new_section)
+    new_section.alignment = 8
+    new_section = elf_exe.add(new_section, False)
 
 
 def gen_sections(sections_infos: tuple, elf_exe: lief.ELF.Binary)->list :
@@ -173,10 +177,11 @@ def gen_sections(sections_infos: tuple, elf_exe: lief.ELF.Binary)->list :
     genere les sections et les segments par la meme occasion
     Retourne la list de tous les noms de sections
     """
-    add_null_section(elf_exe)
+    name_section_shstrtab: list = []
+
+    add_null_section(elf_exe, name_section_shstrtab)
     content_sections: dict = sections_infos[0]
 
-    name_section_shstrtab: list = []
     for name_section in content_sections :
         if name_section == '.shstrtab' or name_section == '.symtab' or name_section == '.symstr' or name_section == 'Headers' :
             continue
@@ -195,7 +200,6 @@ def gen_sections(sections_infos: tuple, elf_exe: lief.ELF.Binary)->list :
     return name_section_shstrtab
 
 def add_null_symbol(elf_exe: lief.ELF.Binary, strtab: list) :
-    strtab.append('\0')
 
     null_symbol         = lief.ELF.Symbol()
     null_symbol.type    = lief.ELF.SYMBOL_TYPES.NOTYPE
@@ -318,7 +322,7 @@ def gen_elf_file(elf_exe: lief.ELF.Binary, path_xml: str, path_elf: str, is_64: 
     """
     genere un fichier elf a partir d'une base ghidra
     """
-    gen_phdr(elf_exe, is_64)#puis on creer un phdr
+    #gen_phdr(elf_exe, is_64)#puis on creer un phdr
     sections_infos: tuple = get_sections_content(path_xml)
     name_sections = gen_sections(sections_infos, elf_exe)#en fait lorsqu'on cree les sections les on creer aussi des segments
     #name_sections permet de creer .shstrtab a la fin(la section qui contient le nom de toutes les sections)
