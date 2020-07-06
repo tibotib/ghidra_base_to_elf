@@ -1,3 +1,4 @@
+
 import lief
 import sys
 import os
@@ -141,7 +142,7 @@ def gen_shstrtab(elf_exe: lief.ELF.Binary, sh_content: list, sections_infos: tup
 
 
     elf_exe.header.section_name_table_idx = elf_exe.header.numberof_sections - 2
-#    elf_exe.header.section_header_offset  = shstrtab_section.offset + shstrtab_section.original_size
+#    elf_exe.header.section_header_offset  = elf_exe.header.section_header_offset - 1
     elf_exe.header.entrypoint             = entry_point(elf_exe)
 
     for section in elf_exe.sections :
@@ -164,12 +165,18 @@ def add_null_section(elf_exe: lief.ELF.Binary, name_section_shstrtab: list) :
     on ajoute une section NULL au debut
     """
     new_section = lief.ELF.Section()
-    new_section.name = '\0'
-    name_section_shstrtab.append('\0')
+#    new_section.name = '\0'
+ #    name_section_shstrtab.append('\0')
     new_section.type = lief.ELF.SECTION_TYPES.NULL
+    new_section.add(lief.ELF.SECTION_FLAGS.NONE)
+#    new_section.content = [0]
+#    new_section.virtual_address = 0x0
+    new_section.size = 0x0
+    new_section.offset = 0x0
     new_section.content = [0]
-    new_section.alignment = 8
+    new_section.alignment = 0
     new_section = elf_exe.add(new_section, False)
+
 
 
 def gen_sections(sections_infos: tuple, elf_exe: lief.ELF.Binary)->list :
@@ -241,7 +248,6 @@ def gen_symtab(elf_exe: lief.ELF.Binary, path_xml: str) :
         strtab_list.append("elf_symbol_" + sym_ghidra)
         sym_lief = lief.ELF.Symbol()
         sym_lief.name = "elf_symbol_" + sym_ghidra
-#la faut s'addapter et pas tt le temps mettre la meme chose
         sym_lief.type = lief.ELF.SYMBOL_TYPES.FUNC
         sym_lief.binding = lief.ELF.SYMBOL_BINDINGS.GLOBAL
         sym_lief.value = all_func[0][sym_ghidra]
@@ -272,27 +278,34 @@ def gen_symtab(elf_exe: lief.ELF.Binary, path_xml: str) :
 
 #et la c'est les liens vers les librairies
     for sym_ghidra in all_func[2] :
-    #    tp = sym_ghidra.getSymbolType()
-    #    strtab_list.append("elf_symbol_" + sym_ghidra.getName() + '\0')
         strtab_list.append("elf_symbol_" + sym_ghidra)
         sym_lief = lief.ELF.Symbol()
         sym_lief.name = "elf_symbol_" + sym_ghidra
-#la faut s'addapter et pas tt le temps mettre la meme chose
-        sym_lief.type = lief.ELF.SYMBOL_TYPES.OBJECT
+        sym_lief.type = lief.ELF.SYMBOL_TYPES.FUNC
         sym_lief.binding = lief.ELF.SYMBOL_BINDINGS.GLOBAL
         sym_lief.value = all_func[2][sym_ghidra]
-#        sym_lief.imported = True
-#        sym_lief.size = 0
-    #    if sym_ghidra.isDynamic() :
-    #        sym_lief = elf_exe.add_dynamic_symbol(sym_lief)
-    #    else :
+        sym_lief.imported = True
         sym_lief = elf_exe.add_static_symbol(sym_lief)
         print(sym_lief)
+
     symstr_section.content = string_list_to_byte(strtab_list)
     symtab_section = elf_exe.add(symtab_section, False)
     symstr_section = elf_exe.add(symstr_section, False)
 
 
+
+def write_and_rearrange(elf_exe: lief.ELF.Binary, path_elf: str) :
+    write_in_file(elf_exe, path_elf)
+    exe = lief.parse(path_elf)
+    shstrtab: lief.ELF.Section
+    rem_shstrtab: lief.ELF.Section
+    for section in exe.sections :
+        if section.name == ".shstrtab" :
+            rem_shstrtab = section
+        elif section.name == ".symstr" and section.alignment == 0x1000 :
+            section.name = ".shstrtab"
+    exe.remove(rem_shstrtab)
+    write_in_file(exe, path_elf)
 
 
 def write_in_file(elf_exe: lief.ELF.Binary, path: str) :
@@ -302,7 +315,6 @@ def write_in_file(elf_exe: lief.ELF.Binary, path: str) :
     builder = lief.ELF.Builder(elf_exe)
     print(2)
     builder.build()
-    print(3)
     builder.write(path)
 
 def gen_elf_from_elf(elf_exe: lief.ELF.Binary, path_xml: str, path_elf: str) :
@@ -322,7 +334,7 @@ def gen_elf_file(elf_exe: lief.ELF.Binary, path_xml: str, path_elf: str, is_64: 
     """
     genere un fichier elf a partir d'une base ghidra
     """
-    #gen_phdr(elf_exe, is_64)#puis on creer un phdr
+#    gen_phdr(elf_exe, is_64)#puis on creer un phdr
     sections_infos: tuple = get_sections_content(path_xml)
     name_sections = gen_sections(sections_infos, elf_exe)#en fait lorsqu'on cree les sections les on creer aussi des segments
     #name_sections permet de creer .shstrtab a la fin(la section qui contient le nom de toutes les sections)
@@ -331,7 +343,8 @@ def gen_elf_file(elf_exe: lief.ELF.Binary, path_xml: str, path_elf: str, is_64: 
 
     for seg in elf_exe.segments :
         print(seg)
-    write_in_file(elf_exe, path_elf)
+    write_and_rearrange(elf_exe, path_elf)
+    #write_in_file(elf_exe, path_elf)
 
 def main() :
     path_elf: str                 = "/home/fouque/idaExample.elf"
