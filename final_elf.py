@@ -1,6 +1,6 @@
 import lief
 from header import gen_header_elf
-from util import string_list_to_byte, gen_permissions, find_start, write_in_file
+from util import string_list_to_byte, gen_permissions, find_start, write_in_file, name_symbol
 from parseXML import XmlParser
 
 
@@ -109,7 +109,7 @@ class FinalElf :
         symtab_section             = lief.ELF.Section()
         symtab_section.name        = ".symtab"
         symtab_section.type        = lief.ELF.SECTION_TYPES.SYMTAB
-        symtab_section.alignment   = 1
+        symtab_section.alignment   = 8
         symtab_section.link        = len(self.elf_exe.sections) + 1
         symtab_section.content     = [0] * 16 * (len(all_func[0]) + len(all_func[1]) + len(all_func[2]))
 
@@ -118,53 +118,30 @@ class FinalElf :
         symstr_section.type       = lief.ELF.SECTION_TYPES.STRTAB
         symstr_section.alignment  = 1
 
-        strtab_list = []#on garde le nom de toutes les sections
-
-
-
+        strtab_list = []#on garde le nom de toutes les symbols
         self.add_null_symbol()
 
         #ca c'est les fonctions
         for sym_ghidra in all_func[0] :
-        #    tp = sym_ghidra.getSymbolType()
-            #strtab_list.append("elf_symbol_" + sym_ghidra)
-
-            sym_lief = lief.ELF.Symbol()
-            tmp_name: list = list("elf_symbol_" + sym_ghidra)
-            for i in range(0, len(tmp_name)) :
-                if not(tmp_name[i].isalpha()) :
-                    tmp_name[i] = '_'
-            tmp_name = ''.join(tmp_name)
+            tmp_name: str = name_symbol(list("elf_symbol_" + sym_ghidra))
             strtab_list.append(tmp_name)
 
-            print(tmp_name)
-            sym_lief.name    = tmp_name
-            sym_lief.type = lief.ELF.SYMBOL_TYPES.FUNC
-            sym_lief.binding = lief.ELF.SYMBOL_BINDINGS.GLOBAL
-            sym_lief.value = all_func[0][sym_ghidra]
-            sym_lief.size = 0
-        #    if sym_ghidra.isDynamic() :
-        #        s
-            #sym_lief = self.elf_exe.add_dynamic_symbol(sym_lief)
-        #    else :
-            sym_lief = self.elf_exe.add_static_symbol(sym_lief)
+            sym_lief          = lief.ELF.Symbol()
+            sym_lief.name     = tmp_name
+            sym_lief.type     = lief.ELF.SYMBOL_TYPES.FUNC
+            sym_lief.binding  = lief.ELF.SYMBOL_BINDINGS.GLOBAL
+            sym_lief.value    = all_func[0][sym_ghidra]
+            sym_lief.size     = 0
+            sym_lief          = self.elf_exe.add_static_symbol(sym_lief)
             print(sym_lief)
 
 
         #mtn on fait les symbols
         for sym_ghidra in all_func[1] :
-    #        strtab_list.append("elf_symbol_" + sym_ghidra)
-            sym_lief         = lief.ELF.Symbol()
-
-            tmp_name: str = "elf_symbol_" + sym_ghidra
-
-            tmp_name: list = list("elf_symbol_" + sym_ghidra)
-            for i in range(0, len(tmp_name)) :
-                if not(tmp_name[i].isalpha()) :
-                    tmp_name[i] = '_'
-            tmp_name = ''.join(tmp_name)
+            tmp_name: str = name_symbol(list("elf_symbol_" + sym_ghidra))
             strtab_list.append(tmp_name)
 
+            sym_lief          = lief.ELF.Symbol()
             sym_lief.name    = tmp_name
             sym_lief.type    = lief.ELF.SYMBOL_TYPES.FUNC
             sym_lief.binding = lief.ELF.SYMBOL_BINDINGS.GLOBAL
@@ -175,16 +152,11 @@ class FinalElf :
 
     #et la c'est les liens vers les librairies
         for sym_ghidra in all_func[2] :
-            sym_lief          = lief.ELF.Symbol()
-            tmp_name: str = "elf_symbol_" + sym_ghidra
-            tmp_name: list = list("elf_symbol_" + sym_ghidra)
-            for i in range(0, len(tmp_name)) :
-                if not(tmp_name[i].isalpha()) :
-                    tmp_name[i] = '_'
-            tmp_name = ''.join(tmp_name)
+            tmp_name: str     = name_symbol(list("elf_symbol_" + sym_ghidra))
             strtab_list.append(tmp_name)
 
-            sym_lief.name    = tmp_name
+            sym_lief          = lief.ELF.Symbol()
+            sym_lief.name     = tmp_name
             sym_lief.type     = lief.ELF.SYMBOL_TYPES.FUNC
             sym_lief.binding  = lief.ELF.SYMBOL_BINDINGS.GLOBAL
             sym_lief.value    = all_func[2][sym_ghidra]
@@ -194,9 +166,8 @@ class FinalElf :
             print(sym_lief)
 
         symstr_section.entry_size = len(strtab_list)
-        symtab_section = self.elf_exe.add(symtab_section, False)
-        symstr_section = self.elf_exe.add(symstr_section, False)
-        #symstr_section.content = string_list_to_byte(strtab_list)
+        symtab_section            = self.elf_exe.add(symtab_section, False)
+        symstr_section            = self.elf_exe.add(symstr_section, False)
 
     def gen_shstrtab(self, sections_infos: list, sh_content: list) :
         """

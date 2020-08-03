@@ -64,8 +64,8 @@ def gen_permissions(section: lief.ELF.Section, info_sec: list, seg: lief.ELF.Seg
     """
     section_name: str = section.name
     for info in info_sec :
-        if get_attributes(info, 'NAME') == section_name :
-            perm: str = get_attributes(info, 'PERMISSIONS')
+        if info.attributes['NAME'].value == section_name :
+            perm: str = info.attributes['PERMISSIONS'].value
             print("perm = ", perm)
             transfo_perm(perm, seg, section)
 
@@ -93,8 +93,8 @@ def find_start(name_section: str, sections_infos: list)->list :
     retourne une list[virtual_size, virtual_offset] pour une section donnee
     """
     for infos_sec in sections_infos :
-        if get_attributes(infos_sec, 'NAME') == name_section :
-            return [get_attributes_to_int(infos_sec, 'LENGTH', 16), get_attributes_to_int(infos_sec, 'START_ADDR', 16)]
+        if  infos_sec.attributes['NAME'].value == name_section :
+            return [int(infos_sec.attributes['LENGTH'].value, 16), int(infos_sec.attributes['START_ADDR'].value, 16)]
     return -1
 
 def get_attributes(xml_element, name_attribute: str)->str :
@@ -122,3 +122,9 @@ def write_in_file(elf_exe: lief.ELF.Binary, path: str) :
     builder = lief.ELF.Builder(elf_exe)
     builder.build()
     builder.write(path)
+
+def name_symbol(nm: list)-> str :
+    for i in range(0, len(nm)) :
+        if not(nm[i].isalpha()) :
+            nm[i] = '_'
+    return ''.join(nm)
