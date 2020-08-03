@@ -98,11 +98,14 @@ def find_start(name_section: str, sections_infos: list)->list :
     return -1
 
 def get_attributes(xml_element, name_attribute: str)->str :
+    """
+    retourne l attribut name_attribute de l'elememt xml_element
+    """
     if xml_element.hasAttribute(name_attribute) :
-        return xml_element.attributes[name_attribute].value
+        return str(xml_element.attributes[name_attribute].value)
     return "Attribute non trouve"
 
-def get_attributes_to_int(xml_element, name_attribute, base)->int :
+def get_attributes_to_int(xml_element, name_attribute: str, base: int)->int :
     attr = get_attributes(xml_element, name_attribute)
     if attr == "Attribute non trouve" :
         return 0x0
@@ -122,3 +125,10 @@ def write_in_file(elf_exe: lief.ELF.Binary, path: str) :
     builder = lief.ELF.Builder(elf_exe)
     builder.build()
     builder.write(path)
+
+
+def name_symbol(nm: list)-> str :
+    for i in range(0, len(nm)) :
+        if not(nm[i].isalpha()) :
+            nm[i] = '_'
+    return ''.join(nm)

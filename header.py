@@ -1,7 +1,8 @@
 #les fonctions utiles pour geerer l'en-tete
 import lief
+from parseXML import XmlParser
 
-def ei_ident(info_proc, is_64b)->bytearray :
+def ei_ident(xml_parser: XmlParser, is_64b)->bytearray :
     """
     retourne e_ident du header(16 premiers bytes)
     """
@@ -12,17 +13,18 @@ def ei_ident(info_proc, is_64b)->bytearray :
     ret.append(ord('F'))
 
     ret += b'\x02' if is_64b else b'\x01'
-    ret += b'\x02' if info_proc.attributes['ENDIAN'].value == "big" else b'\x01'
+    ret += b'\x02' if xml_parser.get_processor_endian() == "big" else b'\x01'
     ret += b'\x01'#on met version 1 tt le temps pcq de tte facon ca ne change rien
     ret += b'\0'#ABI byte qu'on met a 0
     ret += b"\0\0\0\0\0\0\0\0"#on complete
     return ret
 
-def ei_type(info_proc)->bytes :
+def ei_type(xml_parser: XmlParser)->bytes :
     return b"\x03\0"
 
-def ei_machine(info_proc)->bytes :
-    proc: str = info_proc.attributes['NAME'].value
+def ei_machine(xml_parser: XmlParser)->bytes :
+    proc: str = xml_parser.get_processor_name()
+
     if proc == "x86" :
         return b"\x3e\0"
 
@@ -56,8 +58,6 @@ def ei_machine(info_proc)->bytes :
     elif proc == "64-32addr" or proc == "64-32addr-R6" :
         return "\x33\0"
 
-    #elif
-
     elif proc == "Z80" or proc == "Z8401x" or proc == "Z180" or proc == "Z182":
         return b"\xdc\0"
 
@@ -66,16 +66,15 @@ def ei_machine(info_proc)->bytes :
 
     return b"\x3e\0"#on met cette valeur pour ce pc
 
-def ei_machine_and_entrypoint_64(info_proc)->bytearray :
+def ei_machine_and_entrypoint_64(xml_parser: XmlParser)->bytearray :
     """
     ecrit la deuxieme ligne du elf
     """
     ret = bytearray()
-    ret += ei_type(info_proc)
-    ret += ei_machine(info_proc)
-    ret += b"\x01\0\0\0"#la version
-    #ret += ei_entrypoint(header_type.entrypoint)#on peux revoir apres
-    ret += b"\0\0\0\0\0\0\0\0"
+    ret += ei_type(xml_parser)
+    ret += ei_machine(xml_parser)
+    ret += b"\x01\0\0\0"      #la version
+    ret += b"\0\0\0\0\0\0\0\0"#on entre lq valeur de l entrypoint a la fin
     return ret
 
 def third_line_64()->bytearray :
@@ -88,18 +87,16 @@ def third_line_64()->bytearray :
     e_shentsize: bytes = b"\x40\0"
     e_shnum: bytes     = b"\0\0"#nio met a 0 aussi on vera apres
     e_shstrndx: bytes  = b"\0\0"
-    return bytearray(e_phoff + e_shoff + e_flag + e_ehsize + e_phentsize + e_phenum + e_shentsize + e_shnum + e_shstrndx)
+    return bytearray(e_phoff + e_shoff + e_flag + e_phsize + e_phentsize + e_phenum + e_shentsize + e_shnum + e_shstrndx)
 
-def ei_machine_and_entrypoint_32(info_proc)->str :
+def ei_machine_and_entrypoint_32(xml_parser: XmlParser)->str :
     """
     ecrit la deuxieme ligne du elf
     """
     ret = bytearray()
-    ret += ei_type(info_proc)
-    ret += ei_machine(info_proc)
+    ret += ei_type(xml_parser)
+    ret += ei_machine(xml_parser)
     ret += b"\x01\x00\x00\x00"#la version
-    #ret += ei_entrypoint(cuProg., 4)
-#    ret += b"\xa0\x12\x40\x00"
     ret += b"\0\0\0\0"
     return ret
 
@@ -115,21 +112,22 @@ def third_line_32()->bytearray :
     e_shstrndx: bytes  = b"\0\0"
     return bytearray(e_phoff + e_shoff + e_flag + e_ehsize + e_phentsize + e_phenum + e_shentsize + e_shnum + e_shstrndx)
 
-def gen_header_elf(file, proc_info, is_64b: bool) :
+def gen_header_elf(file, xml_parser: XmlParser, is_64b: bool) :
     """
     genere le header du elf
     """
-    ei_ident_bytes: bytearray = ei_ident(proc_info, is_64b)
+    ei_ident_bytes: bytearray = ei_ident(xml_parser, is_64b)
     file.write(ei_ident_bytes)
 
     if is_64b :
-        ei_sncd_line: bytearray = ei_machine_and_entrypoint_64(proc_info)
+        ei_sncd_line: bytearray = ei_machine_and_entrypoint_64(xml_parser)
         file.write(ei_sncd_line)
 
         st: bytearray = third_line_64()
         file.write(st)
+
     else :
-        ei_sncd_line: bytearray = ei_machine_and_entrypoint_32(proc_info)
+        ei_sncd_line: bytearray = ei_machine_and_entrypoint_32(xml_parser)
         file.write(ei_sncd_line)
 
         st: bytearray = third_line_32()

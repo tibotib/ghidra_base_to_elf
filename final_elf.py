@@ -1,14 +1,14 @@
 import lief
 from header import gen_header_elf
-from util import string_list_to_byte, gen_permissions, find_start, write_in_file
+from util import string_list_to_byte, gen_permissions, find_start, write_in_file, name_symbol
 from parseXML import XmlParser
 
 
 
 class FinalElf :
     def __init__(self, path_elf: str, path_xml: str) :
-        self.path_elf:  str                = path_elf
-        self.path_xml:  str                = path_xml
+        self.path_elf : str                = path_elf
+        self.path_xml : str                = path_xml
         self.xmlparser: XmlParser          = XmlParser(self.path_xml)
 
 
@@ -16,17 +16,16 @@ class FinalElf :
         """
         on ecrit le header dans file et apres on parse ce fichier
         """
-        proc_info = self.xmlparser.get_processor()
-        is_64b: bool = True if self.xmlparser.is_64(proc_info) == 64 else False
+        is_64b: bool = self.xmlparser.is_64()
 
         file = open(self.path_elf, "wb")
-        gen_header_elf(file, proc_info, is_64b)
+        gen_header_elf(file, self.xmlparser, is_64b)
         file.close()
 
 
     def parse_header(self) :
         """
-        on parse le header creer avec lief pr pouvoir construire le fichier elf
+        on parse le header cree avec lief pour pouvoir construire le fichier elf
         """
         self.elf_exe = lief.parse(self.path_elf)
 
@@ -35,14 +34,15 @@ class FinalElf :
         """
         apres avoir initialise l'objet on peut creer un elf
         """
-        sections_infos: tuple   = self.xmlparser.get_sections_content(self.path_xml)
-        name_sections: list     = self.gen_sections(sections_infos[0])
+        sections_infos: tuple    = self.xmlparser.get_sections_content(self.path_xml)
+        name_sections : list     = self.gen_sections(sections_infos[0])
         #name_sections permet de creer .shstrtab a la fin(la section qui contient le nom de toutes les sections)
+
         self.gen_symtab()
         self.gen_shstrtab(sections_infos[1], name_sections)
 
         self.write_and_rearrange()
-        #write_in_file(elf_exe, path_elf)
+        #self.write_in_file()
 
     def add_null_section(self) :
         """
@@ -68,8 +68,7 @@ class FinalElf :
         self.add_null_section()
 
         for name_section in content_sections :
-            print("name_section = ", name_section)
-            if name_section == '.shstrtab' or name_section == '.symtab' or name_section == '.symstr' or name_section == 'Headers' or name_section == '_elfSectionHeader':
+            if name_section == '.shstrtab' or name_section == '.symtab' or name_section == '.symstr' or name_section == 'Headers' or name_section == '_elfSectionHeaders':
                 continue
 
             name_section_shstrtab.append(name_section)
@@ -80,6 +79,7 @@ class FinalElf :
 
             newSec.add(lief.ELF.SECTION_FLAGS.ALLOC)
             newSec = self.elf_exe.add(newSec, loaded = True)#en mettant loaded a False on ne cree pas de segment
+            #on cree les segments en meme temps que les sections et on regle toutes les caracteristiques du segments a la fin
 
         name_section_shstrtab.append(".symtab")
         name_section_shstrtab.append(".symstr")
@@ -102,12 +102,11 @@ class FinalElf :
         """
         on genere une table des symbols
         """
-        all_func:list = self.xmlparser.get_functions(self.path_xml)
+        all_func: list             = self.xmlparser.get_functions(self.path_xml)
 
         symtab_section             = lief.ELF.Section()
         symtab_section.name        = ".symtab"
         symtab_section.type        = lief.ELF.SECTION_TYPES.SYMTAB
-        symtab_section.entry_size  = 16
         symtab_section.alignment   = 8
         symtab_section.link        = len(self.elf_exe.sections) + 1
         symtab_section.content     = [0] * 16 * (len(all_func[0]) + len(all_func[1]) + len(all_func[2]))
@@ -115,67 +114,69 @@ class FinalElf :
         symstr_section            = lief.ELF.Section()
         symstr_section.name       = ".symstr"
         symstr_section.type       = lief.ELF.SECTION_TYPES.STRTAB
-        symstr_section.entry_size = 16
         symstr_section.alignment  = 1
 
-        strtab_list = []#on garde le nom de toutes les sections
-
-        symtab_section = self.elf_exe.add(symtab_section, False)
-        symstr_section = self.elf_exe.add(symstr_section, False)
-
+        strtab_list = []#on garde le nom de toutes les symbols
         self.add_null_symbol()
 
         #ca c'est les fonctions
         for sym_ghidra in all_func[0] :
-        #    tp = sym_ghidra.getSymbolType()
-            #strtab_list.append("elf_symbol_" + sym_ghidra)
-            sym_lief = lief.ELF.Symbol()
-            sym_lief.name = "elf_symbol_" + sym_ghidra
-            sym_lief.type = lief.ELF.SYMBOL_TYPES.FUNC
-            sym_lief.binding = lief.ELF.SYMBOL_BINDINGS.GLOBAL
-            sym_lief.value = all_func[0][sym_ghidra]
-            sym_lief.size = 0
-        #    if sym_ghidra.isDynamic() :
-        #        s
-            #sym_lief = self.elf_exe.add_dynamic_symbol(sym_lief)
-        #    else :
-            sym_lief = self.elf_exe.add_static_symbol(sym_lief)
+            tmp_name: str = name_symbol(list("elf_symbol_" + sym_ghidra))
+            strtab_list.append(tmp_name)
+
+            sym_lief          = lief.ELF.Symbol()
+            sym_lief.name     = tmp_name
+            sym_lief.type     = lief.ELF.SYMBOL_TYPES.FUNC
+            sym_lief.binding  = lief.ELF.SYMBOL_BINDINGS.GLOBAL
+            sym_lief.value    = all_func[0][sym_ghidra]
+            sym_lief.size     = 0
+            sym_lief          = self.elf_exe.add_static_symbol(sym_lief)
             print(sym_lief)
 
 
         #mtn on fait les symbols
         for sym_ghidra in all_func[1] :
-            strtab_list.append("elf_symbol_" + sym_ghidra)
-            sym_lief         = lief.ELF.Symbol()
-            sym_lief.name    = "elf_symbol_" + sym_ghidra
+            tmp_name: str = name_symbol(list("elf_symbol_" + sym_ghidra))
+            strtab_list.append(tmp_name)
+
+            sym_lief          = lief.ELF.Symbol()
+            sym_lief.name    = tmp_name
             sym_lief.type    = lief.ELF.SYMBOL_TYPES.FUNC
             sym_lief.binding = lief.ELF.SYMBOL_BINDINGS.GLOBAL
             sym_lief.value   = all_func[1][sym_ghidra]
             sym_lief         = self.elf_exe.add_static_symbol(sym_lief)
+            sym_lief.size    = 0
             print(sym_lief)
 
     #et la c'est les liens vers les librairies
         for sym_ghidra in all_func[2] :
-            strtab_list.append("elf_symbol_" + sym_ghidra)
+
+            tmp_name: str     = name_symbol(list("elf_symbol_" + sym_ghidra))
+            strtab_list.append(tmp_name)
+
             sym_lief          = lief.ELF.Symbol()
-            sym_lief.name     = "elf_symbol_" + sym_ghidra
+            sym_lief.name     = tmp_name
             sym_lief.type     = lief.ELF.SYMBOL_TYPES.FUNC
             sym_lief.binding  = lief.ELF.SYMBOL_BINDINGS.GLOBAL
             sym_lief.value    = all_func[2][sym_ghidra]
+            sym_lief.size     = 0
             sym_lief.imported = True
             sym_lief          = self.elf_exe.add_static_symbol(sym_lief)
             print(sym_lief)
 
-        #symstr_section.content = string_list_to_byte(strtab_list)
+        symstr_section.entry_size = len(strtab_list)
+        symtab_section = self.elf_exe.add(symtab_section, False)
+        symstr_section = self.elf_exe.add(symstr_section, False)
+        symstr_section.content = string_list_to_byte(strtab_list)
 
     def gen_shstrtab(self, sections_infos: list, sh_content: list) :
         """
         on genere shstrstab et on finalise le header + on rearrange a les segments
         """
         sh_content.append(".shstrtab")
-        shstrtab_section = lief.ELF.Section(".shstrtab")
+        shstrtab_section         = lief.ELF.Section(".shstrtab")
         shstrtab_section.content = string_list_to_byte(sh_content)
-        shstrtab_section.type = lief.ELF.SECTION_TYPES.STRTAB
+        shstrtab_section.type    = lief.ELF.SECTION_TYPES.STRTAB
 
         self.set_segments(sections_infos)#en meme temps on set les permissions pr les segments
         #split_segments(elf_exe)
@@ -184,7 +185,7 @@ class FinalElf :
         shstrtab_section            = self.elf_exe.add(shstrtab_section, False)
 
 
-        self.elf_exe.header.section_name_table_idx = self.elf_exe.header.numberof_sections - 2
+        self.elf_exe.header.section_name_table_idx = self.elf_exe.header.numberof_sections - 2#on met ds le header le .strtab(no des symbols) au lieu du .shstrtab dcp la libririe lief va regler ca
         self.elf_exe.header.entrypoint             = self.xmlparser.entry_point(self.elf_exe)
 
         for section in self.elf_exe.sections :
