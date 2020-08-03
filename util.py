@@ -125,6 +125,6 @@ def write_in_file(elf_exe: lief.ELF.Binary, path: str) :
 
 def name_symbol(nm: list)-> str :
     for i in range(0, len(nm)) :
-        if not(nm[i].isalpha()) :
+        if not(nm[i].isalpha()) and not(nm[i].isnumeric()):
             nm[i] = '_'
     return ''.join(nm)
