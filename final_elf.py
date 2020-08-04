@@ -43,7 +43,6 @@ class FinalElf :
 
 
         self.write_and_rearrange()
-        print(self.elf_exe)
     #    self.write_in_file()
 
     def add_null_section(self) :
@@ -94,7 +93,7 @@ class FinalElf :
         """
         null_symbol         = lief.ELF.Symbol()
         null_symbol.type    = lief.ELF.SYMBOL_TYPES.NOTYPE
-        null_symbol.binding = lief.ELF.SYMBOL_BINDINGS.LOCAL
+        null_symbol.binding = lief.ELF.SYMBOL_BINDINGS.WEAK
         null_symbol.value   = 0x0
         null_symbol.size    = 0x0
         self.elf_exe.add_static_symbol(null_symbol)
@@ -104,14 +103,16 @@ class FinalElf :
         """
         on genere une table des symbols
         """
+        proc_info    = self.xmlparser.get_processor()
+        is_64b: bool = self.xmlparser.is_64(proc_info)
+
         all_func: list             = self.xmlparser.get_functions(self.path_xml)
 
         symtab_section             = lief.ELF.Section()
         symtab_section.name        = ".symtab"
         symtab_section.type        = lief.ELF.SECTION_TYPES.SYMTAB
-        symtab_section.alignment   = 8
+        symtab_section.offset      = 0x0
         symtab_section.link        = len(self.elf_exe.sections) + 1
-    #    symtab_section.content     = [0] * 90 * (len(all_func[0]) + len(all_func[1]) + len(all_func[2]))
 
         symstr_section            = lief.ELF.Section()
         symstr_section.name       = ".symstr"
@@ -127,13 +128,13 @@ class FinalElf :
             strtab_list.append(tmp_name)
 
             symtab_section.content     += [0] * len(tmp_name)
-            sym_lief          = lief.ELF.Symbol()
-            sym_lief.name     = tmp_name
-            sym_lief.type     = lief.ELF.SYMBOL_TYPES.FUNC
-            sym_lief.binding  = lief.ELF.SYMBOL_BINDINGS.GLOBAL
-            sym_lief.value    = all_func[0][sym_ghidra]
-            sym_lief.size     = 0
-            sym_lief          = self.elf_exe.add_static_symbol(sym_lief)
+            sym_lief                    = lief.ELF.Symbol()
+            sym_lief.name               = tmp_name
+            sym_lief.type               = lief.ELF.SYMBOL_TYPES.FUNC
+            sym_lief.binding            = lief.ELF.SYMBOL_BINDINGS.GLOBAL
+            sym_lief.value              = all_func[0][sym_ghidra]
+            sym_lief.size               = 0
+            sym_lief                    = self.elf_exe.add_static_symbol(sym_lief)
             print(sym_lief)
 
         #mtn on fait les symbols
@@ -142,13 +143,13 @@ class FinalElf :
             strtab_list.append(tmp_name)
 
             symtab_section.content     += [0] * len(tmp_name)
-            sym_lief          = lief.ELF.Symbol()
-            sym_lief.name     = tmp_name
-            sym_lief.type     = lief.ELF.SYMBOL_TYPES.FUNC
-            sym_lief.binding  = lief.ELF.SYMBOL_BINDINGS.GLOBAL
-            sym_lief.value    = all_func[1][sym_ghidra]
-            sym_lief          = self.elf_exe.add_static_symbol(sym_lief)
-            sym_lief.size     = 0
+            sym_lief                    = lief.ELF.Symbol()
+            sym_lief.name               = tmp_name
+            sym_lief.type               = lief.ELF.SYMBOL_TYPES.FUNC
+            sym_lief.binding            = lief.ELF.SYMBOL_BINDINGS.GLOBAL
+            sym_lief.value              = all_func[1][sym_ghidra]
+            sym_lief                    = self.elf_exe.add_static_symbol(sym_lief)
+            sym_lief.size               = 0
             print(sym_lief)
 
     #et la c'est les liens vers les librairies
@@ -157,18 +158,20 @@ class FinalElf :
             strtab_list.append(tmp_name)
 
             symtab_section.content     += [0] * len(tmp_name)
-            sym_lief          = lief.ELF.Symbol()
-            sym_lief.name     = tmp_name
-            sym_lief.type     = lief.ELF.SYMBOL_TYPES.FUNC
-            sym_lief.binding  = lief.ELF.SYMBOL_BINDINGS.GLOBAL
-            sym_lief.value    = all_func[2][sym_ghidra]
-            sym_lief.size     = 0
-            sym_lief.imported = True
-            sym_lief          = self.elf_exe.add_static_symbol(sym_lief)
+            sym_lief                    = lief.ELF.Symbol()
+            sym_lief.name               = tmp_name
+            sym_lief.type               = lief.ELF.SYMBOL_TYPES.FUNC
+            sym_lief.binding            = lief.ELF.SYMBOL_BINDINGS.GLOBAL
+            sym_lief.value              = all_func[2][sym_ghidra]
+            sym_lief.size               = 0
+            sym_lief.imported           = True
+            sym_lief                    = self.elf_exe.add_static_symbol(sym_lief)
             print(sym_lief)
 
-        symstr_section.entry_size = len(strtab_list)
-    #    symstr_section.content    = string_list_to_byte(strtab_list)
+        if is_64b :
+            symtab_section.entry_size = 24
+        else:
+            symtab_section.entry_size = 16
         symtab_section            = self.elf_exe.add(symtab_section, False)
         symstr_section            = self.elf_exe.add(symstr_section, False)
 
@@ -178,17 +181,18 @@ class FinalElf :
         """
         sh_content.append(".shstrtab")
         shstrtab_section                           = lief.ELF.Section(".shstrtab")
-        shstrtab_section.content                   = string_list_to_byte(sh_content)
+    #    shstrtab_section.content                   =
         shstrtab_section.type                      = lief.ELF.SECTION_TYPES.STRTAB
 
         self.set_segments(sections_infos)#en meme temps on set les permissions pr les segments
         #split_segments(elf_exe)
         shstrtab_section.entry_size                 = self.elf_exe.header.numberof_sections + 1
-        shstrtab_section.alignment                  = 0x8
+    #    shstrtab_section.alignment                  = 0x1
         shstrtab_section                            = self.elf_exe.add(shstrtab_section, False)
 
         self.elf_exe.header.section_name_table_idx = self.elf_exe.header.numberof_sections - 2
         self.elf_exe.header.entrypoint             = self.xmlparser.entry_point(self.elf_exe)
+        #self.elf_exe.header.section_header_size           = 0x28
 
         for section in self.elf_exe.sections :
             print(section)
@@ -220,8 +224,8 @@ class FinalElf :
                 seg.virtual_size     = virtSize_virtAddr[0]
                 seg.physical_size    = virtSize_virtAddr[0]
 
-                sec.alignment        = 8
-                seg.alignment        = 8
+            #    sec.alignment        = 8
+            #    seg.alignment        = 8
 
 
     def write_and_rearrange(self) :

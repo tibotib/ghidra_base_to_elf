@@ -103,13 +103,13 @@ def ei_machine_and_entrypoint_32(info_proc)->str :
 
 def third_line_32()->bytearray :
     e_phoff: bytes     = b"\x34\0\0\0"#le program table header offset
-    e_shoff: bytes     = b"\0\0\0\0"#on sait pas pour l'instant mais on met qd meme a 0
+    e_shoff: bytes     = b"\0\0\0\0"#offset du section header table
     e_flag: bytes      = b"\0\0\0\0"
-    e_ehsize: bytes    = b"\x34\0"
-    e_phentsize: bytes = b"\x20\0"
-    e_phenum: bytes    = b"\0\0"#on met a zero on vera apres
-    e_shentsize: bytes = b"\x28\0"
-    e_shnum: bytes     = b"\0\0"#nio met a 0 aussi on vera apres
+    e_ehsize: bytes    = b"\x34\0"#taiolle du header
+    e_phentsize: bytes = b"\x20\0"#taille header de segment
+    e_phenum: bytes    = b"\0\0"#nbe header de segment
+    e_shentsize: bytes = b"\x28\0"#taille header de section
+    e_shnum: bytes     = b"\0\0"#nbe header de section
     e_shstrndx: bytes  = b"\0\0"
     return bytearray(e_phoff + e_shoff + e_flag + e_ehsize + e_phentsize + e_phenum + e_shentsize + e_shnum + e_shstrndx)
 
