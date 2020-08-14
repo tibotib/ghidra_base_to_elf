@@ -71,7 +71,6 @@ class XmlParser :
         for i in range(0, len(all_sections)) :
             content: bytes
             if all_sections[i].hasChildNodes() :#ca veut dire que la section n'est pas vide
-                print("child node OK")
                 content = self.get_bytes_in_file(file_byte, int(infos_content[compt_sec].attributes['FILE_OFFSET'].value, 16), int(all_sections[i].attributes['LENGTH'].value, 16))
                 compt_sec += 1
 
@@ -102,13 +101,21 @@ class XmlParser :
                     ret[i].update( {s.attributes['NAME'].value : int(s.attributes['ADDRESS'].value, 16) } )
                 else :
                     ret[i].update( {str(s.attributes['LIB_LABEL'].value)  : int(s.attributes['ADDRESS'].value, 16)} )
-#str(s.attributes['LIB_PROG_NAME'].value) + 
+#str(s.attributes['LIB_PROG_NAME'].value) +
         return ret
 
 
     def get_processor(self) :
         return self.get_element('PROCESSOR')[0]
 
+    def get_file_offset(self, name: str)->int  :
+        all_sections  = self.get_element('MEMORY_SECTION') #infos sur la section
+        infos_content = self.get_element('MEMORY_CONTENTS')
+
+        for i in range(0, len(all_sections)) :
+            if all_sections[i].hasChildNodes() and all_sections[i].attributes['NAME'].value == name :#ca veut dire que la section n'est pas vide
+                return int(infos_content[i].attributes['FILE_OFFSET'].value, 16)
+        return 0x0
 
 
 def get_size_from_language(language: str)->int :

@@ -211,10 +211,13 @@ class FinalElf :
             gen_permissions(sec, sections_infos, seg)
 
             virtSize_virtAddr: tuple = find_start(sec.name, sections_infos)
+    #        file_offset:       int   = self.xmlparser.get_file_offset(sec.name)
+
             if virtSize_virtAddr != -1 :
                 print("name section = ", sec.name)
                 print("addr = ",  hex(sec.offset))
-                seg.file_offset = sec.file_offset
+
+                seg.file_offset  = sec.file_offset
 
                 sec.virtual_address  = virtSize_virtAddr[1]
                 seg.virtual_address  = virtSize_virtAddr[1]

@@ -92,10 +92,15 @@ def find_start(name_section: str, sections_infos: list)->list :
     """
     retourne une list[virtual_size, virtual_offset] pour une section donnee
     """
-    for infos_sec in sections_infos :
-        if  infos_sec.attributes['NAME'].value == name_section :
-            return [int(infos_sec.attributes['LENGTH'].value, 16), int(infos_sec.attributes['START_ADDR'].value, 16)]
+    for i in range(0, len(sections_infos)) :
+        if  sections_infos[i].attributes['NAME'].value == name_section :
+            tmp_length: int = int(sections_infos[i].attributes['LENGTH'].value, 16)
+            if i + 1 != len(sections_infos) and sections_infos[i + 1].attributes['NAME'].value == name_section :
+                tmp_length += int(sections_infos[i + 1].attributes['LENGTH'].value, 16)
+
+            return [tmp_length, int(sections_infos[i].attributes['START_ADDR'].value, 16)]
     return -1
+
 
 def get_attributes(xml_element, name_attribute: str)->str :
     if xml_element.hasAttribute(name_attribute) :
